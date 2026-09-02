@@ -5,7 +5,7 @@
 <meta charset="utf-8">
 <title>우리집 가계부</title>
 <meta name="color-scheme" content="light only">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <link rel="manifest" href="./manifest.json">
 <link rel="apple-touch-icon" href="./icon-192.png">
 <link rel="icon" type="image/png" href="./icon-192.png">
@@ -28,6 +28,12 @@
   color-scheme:light only;
 }
 *{box-sizing:border-box}
+html{height:100%;overflow:hidden;overscroll-behavior:none;-webkit-text-size-adjust:100%}
+body{height:100%;overflow-y:auto;overflow-x:hidden;overscroll-behavior:none;-webkit-overflow-scrolling:touch;touch-action:pan-y;position:relative}
+input,select,textarea{font-size:16px!important}
+.amount input{font-size:34px!important}
+.fxrow input{font-size:16px!important}
+.arow input{font-size:16px!important}
 html{background:var(--bg)}body{margin:0;background:linear-gradient(180deg,var(--bg-top) 0,var(--bg) 260px) fixed;color:var(--ink);font-family:"IBM Plex Sans KR",-apple-system,"Apple SD Gothic Neo","Noto Sans KR",sans-serif;font-size:15px;line-height:1.45;-webkit-font-smoothing:antialiased}
 body{padding-bottom:calc(var(--tab-h) + 24px + env(safe-area-inset-bottom))}
 button,input,select,textarea{font:inherit;color:inherit}
@@ -452,6 +458,7 @@ function apiUrl(){return (window.GB_API&&String(window.GB_API).startsWith('http'
 async function gs(fn){const args=[].slice.call(arguments,1);const url=apiUrl();if(!url)throw new Error('no-gs');
   const r=await fetch(url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({fn,args})});
   if(!r.ok)throw new Error('HTTP '+r.status);const j=await r.json();if(j.error)throw new Error(j.error);return j.result;}
+S.view=ls.get('gb.view','');function viewRows(rows){return S.view?rows.filter(t=>t.u===S.view):rows;}
 S.loadedYears={};S.syncing=false;
 function applySettings(raw){const base=JSON.parse(JSON.stringify(DEFAULT_SETTINGS));Object.keys(raw||{}).forEach(k=>{base[k]=raw[k];});S.settings=normalize(base);S.settings.accounts=(S.assetsRaw&&S.assetsRaw.accounts||[]).map(a=>({id:a.id,group:a.group,name:a.name}));}
 function applyAssets(data){S.assetsRaw=data||{months:[],accounts:[]};const map={};(S.assetsRaw.accounts||[]).forEach(a=>{Object.keys(a.bal||{}).forEach(m=>{(map[m]=map[m]||{bal:{}}).bal[a.id]=a.bal[m];});});S.assets=map;if(S.settings)S.settings.accounts=S.assetsRaw.accounts.map(a=>({id:a.id,group:a.group,name:a.name}));}
@@ -487,8 +494,10 @@ function monthLabel(m){const [y,mo]=m.split('-');return `${y}년 ${Number(mo)}�
 function sums(rows){const sum=f=>rows.filter(f).reduce((s,t)=>s+(t.a||0),0);const inc=sum(t=>t.t==='수입'),sav=sum(t=>t.t==='저축'),fix=sum(t=>t.t==='지출'&&t.f),vari=sum(t=>t.t==='지출'&&!t.f);return{inc,sav,fix,vari,exp:fix+vari,left:inc-fix-vari-sav};}
 function renderWho(){
   const w=$('#who');w.innerHTML='';
-  (S.settings.users||[]).forEach(u=>{const b=document.createElement('button');b.textContent=u;b.className=S.user===u?'on':'';b.onclick=()=>{S.user=u;ls.set('gb.user',u);renderWho();};w.appendChild(b);});
-  if(!S.user&&S.settings.users&&S.settings.users.length){S.user=S.settings.users[0];ls.set('gb.user',S.user);renderWho();}
+  const opts=[''].concat(S.settings.users||[]);
+  if(S.view&&!opts.includes(S.view))S.view='';
+  opts.forEach(u=>{const b=document.createElement('button');b.textContent=u||'전체';b.className=S.view===u?'on':'';b.onclick=()=>{S.view=u;ls.set('gb.view',u);renderAll();};w.appendChild(b);});
+  if(!S.user||!(S.settings.users||[]).includes(S.user)){S.user=(S.settings.users||[])[0]||'';}
 }
 function txRow(t){
   const el=document.createElement('div');el.className='tx t-'+t.t;
@@ -505,11 +514,11 @@ $('#hprev').onclick=()=>{S.month=shiftMonth(S.month,-1);watchLedger(S.month);ren
 $('#hnext').onclick=()=>{S.month=shiftMonth(S.month,1);watchLedger(S.month);renderHome();renderMonth();};
 $('#tolist').onclick=()=>showView('month');
 function renderHome(){
-  const rows=txList(S.month);const s=sums(rows);
+  const rows=viewRows(txList(S.month));const s=sums(rows);
   $('#hlabel').textContent=monthLabel(S.month)+(S.month===ym(todayISO())?'':' ');
   $('#h-exp').textContent=fmt(s.exp)+' 원';
   const days=S.month===ym(todayISO())?Number(todayISO().slice(8)):new Date(Number(S.month.slice(0,4)),Number(S.month.slice(5)),0).getDate();
-  $('#h-exps').textContent=s.exp?`고정 ${fmtMan(s.fix)} · 변동 ${fmtMan(s.vari)} · 하루 평균 ${fmtMan(s.vari/Math.max(1,days))}`:'아직 입력한 지출이 없어요';
+  $('#hlabel').textContent+=S.view?' · '+S.view:'';$('#h-exps').textContent=s.exp?`고정 ${fmtMan(s.fix)} · 변동 ${fmtMan(s.vari)} · 하루 평균 ${fmtMan(s.vari/Math.max(1,days))}`:'아직 입력한 지출이 없어요';
   $('#h-inc').textContent=fmtMan(s.inc);$('#h-sav').textContent=fmtMan(s.sav);
   const left=$('#h-left');left.textContent=fmtMan(s.left);left.style.color=s.left<0?'var(--expense)':'var(--ink)';
   const st=$('#stack');st.innerHTML=s.exp?`<i style="width:${s.fix/s.exp*100}%;background:var(--saving)"></i><i style="width:${s.vari/s.exp*100}%;background:var(--expense)"></i>`:'';
@@ -607,7 +616,7 @@ function openEntry(t){
   const lastc=ls.get('gb.lastcat',{});const e=S.e={id:t?t.id:null,origM:t?ym(t.d):null,type:t?t.t:'지출',cat:t?t.c:(lastc['지출']||{}).c||null,sub:t?t.s:(lastc['지출']||{}).s||null,
     cur:t?(t.cur||'KRW'):'KRW',fx:t&&t.cur&&t.cur!=='KRW'?t.fx:(t?t.a:''),rate:t&&t.rate?t.rate:null,
     memo:t?t.m||'':'',date:t?t.d:todayISO(),pay:t?t.p:ls.get('gb.pay',null),acc:t?t.acc||null:null,
-    fixed:t?!!t.f:null,u:t?t.u:S.user,ts:t?t.ts:null};
+    fixed:t?!!t.f:null,u:t?t.u:(ls.get('gb.user','')||S.view||(S.settings.users||[])[0]||''),ts:t?t.ts:null};
   const sh=$('#sheet');
   sh.innerHTML=`<div class="grab"></div>
     <div class="seg" id="e-seg"><button data-t="지출">지출</button><button data-t="수입">수입</button><button data-t="저축">저축</button></div>
@@ -677,7 +686,9 @@ function renderEntry(keepAmt){
     const accs=(S.settings.accounts||[]).filter(a=>a.group!=='대출');
     html+=`<div class="field" style="margin-top:10px"><label>${label} <span style="color:var(--faint)">(선택)</span></label><select id="e-acc"><option value="">— 선택 안 함 —</option>${accs.map(a=>`<option value="${esc(a.name)}" ${a.name===e.acc?'selected':''}>${esc(a.name)} · ${esc(a.group)}</option>`).join('')}</select></div>`;
   }
+  html+=`<div class="label">입력자</div><div class="chips" id="e-users">${(S.settings.users||[]).map(u=>`<button data-u="${esc(u)}" class="${u===e.u?'on':''}">${esc(u)}</button>`).join('')}</div>`;
   body.innerHTML=html;
+  body.querySelectorAll('#e-users button').forEach(b=>b.onclick=()=>{e.u=b.dataset.u;body.querySelectorAll('#e-users button').forEach(x=>x.classList.toggle('on',x===b));});
   body.querySelector('#e-memo').addEventListener('input',ev=>e.memo=ev.target.value);
   body.querySelector('#e-date').addEventListener('change',ev=>e.date=ev.target.value||e.date);
   if(e.type==='지출'){
@@ -694,13 +705,13 @@ async function saveEntry(){
   if(e.cur!=='KRW'&&!Number(e.rate)){toast('환율을 입력해 주세요');return;}
   if(!e.cat||!e.sub){toast('카테고리를 골라 주세요');return;}
   const obj={d:e.date,t:e.type,c:e.cat,s:e.sub,m:(e.memo||'').trim(),a,cur:e.cur,fx:e.cur==='KRW'?a:Number(e.fx),rate:e.cur==='KRW'?1:Number(e.rate),
-    f:e.type==='지출'&&!!e.fixed,p:e.type==='지출'?(e.pay||''):'',acc:e.type!=='지출'?(e.acc||''):'',u:e.u||S.user||'',ts:e.ts||Date.now()};
+    f:e.type==='지출'&&!!e.fixed,p:e.type==='지출'?(e.pay||''):'',acc:e.type!=='지출'?(e.acc||''):'',u:e.u||'',ts:e.ts||Date.now()};
   if(e.id)obj.edited=Date.now();
   const btn=$('#e-save');btn.disabled=true;
   try{
     const m=ym(e.date);
     if(e.id){obj.id=e.id;await updateTx(obj,e.origM);}else await addTx(obj);
-    if(e.type==='지출'&&e.pay)ls.set('gb.pay',e.pay);learnMemo(obj.m,obj.c,obj.s);const lc=ls.get('gb.lastcat',{});lc[e.type]={c:e.cat,s:e.sub};ls.set('gb.lastcat',lc);
+    if(e.type==='지출'&&e.pay)ls.set('gb.pay',e.pay);if(e.u)ls.set('gb.user',e.u);learnMemo(obj.m,obj.c,obj.s);const lc=ls.get('gb.lastcat',{});lc[e.type]={c:e.cat,s:e.sub};ls.set('gb.lastcat',lc);
     if(e.cur!=='KRW'&&Number(e.rate)!==(S.settings.rates||{})[e.cur]){S.settings.rates=S.settings.rates||{};S.settings.rates[e.cur]=Number(e.rate);saveSettings({rates:S.settings.rates}).catch(()=>{});}
     watchLedger(m);
     toast(e.id?'수정했어요':'저장했어요');closeSheet();
@@ -716,8 +727,8 @@ $$('#filter button').forEach(b=>b.onclick=()=>{S.filter=b.dataset.f;$$('#filter 
 async function renderMonth(){
   if(!$('#v-month').classList.contains('on'))return;
   const y=S.month.slice(0,4);
-  $('#mlabel').textContent=S.scope==='year'?`${y}년 누적`:monthLabel(S.month);
-  const rows=S.scope==='year'?await loadYear(y):txList(S.month);const s=sums(rows);
+  $('#mlabel').textContent=(S.scope==='year'?`${y}년 누적`:monthLabel(S.month))+(S.view?' · '+S.view:'');
+  const rows=viewRows(S.scope==='year'?await loadYear(y):txList(S.month));const s=sums(rows);
   $('#tiles').innerHTML=`
    <div class="tile income"><div class="l">수입</div><div class="v num">${fmt(s.inc)}</div></div>
    <div class="tile expense"><div class="l">지출</div><div class="v num">${fmt(s.exp)}</div><div class="s">고정 ${fmtMan(s.fix)} · 변동 ${fmtMan(s.vari)}</div></div>
@@ -822,7 +833,7 @@ $('#api-share').onclick=async()=>{const u=location.origin+location.pathname+'?ap
 
 // ---------- 분석 리포트
 const RP={mode:'month'};
-function rpMonths(y){const out=[];for(let m=1;m<=12;m++){const k=y+'-'+pad(m);const rows=txList(k);out.push({k,m,rows,s:sums(rows),has:rows.length>0});}return out;}
+function rpMonths(y){const out=[];for(let m=1;m<=12;m++){const k=y+'-'+pad(m);const rows=viewRows(txList(k));out.push({k,m,rows,s:sums(rows),has:rows.length>0});}return out;}
 function rpCats(rows,type){const by={};rows.filter(t=>t.t===(type||'지출')).forEach(t=>{by[t.c]=by[t.c]||{sum:0,n:0,subs:{}};by[t.c].sum+=t.a;by[t.c].n++;const s=by[t.c].subs[t.s]=by[t.c].subs[t.s]||{sum:0,n:0};s.sum+=t.a;s.n++;});return by;}
 function rpSub(rows,c,s){return rows.filter(t=>t.t==='지출'&&t.c===c&&(!s||t.s===s)).reduce((a,t)=>a+t.a,0);}
 function rpPct(a,b){return b?Math.round(a/b*100):0;}
@@ -866,7 +877,7 @@ function buildReport(){
   const last3=ms.slice(Math.max(0,ms.indexOf(cur)-3),ms.indexOf(cur)).filter(x=>x.has);const avg3=last3.length?{exp:last3.reduce((a,x)=>a+x.s.exp,0)/last3.length,inc:last3.reduce((a,x)=>a+x.s.inc,0)/last3.length,sav:last3.reduce((a,x)=>a+x.s.sav,0)/last3.length}:null;
   const cats=rpCats(rows);const catList=Object.entries(cats).sort((a,b)=>b[1].sum-a[1].sum);
   const prevCats=prev?rpCats(prev.rows):{};
-  const title=mode==='year'?`${y}년 연간 종합 리포트`:`${y}년 ${Number(S.month.slice(5))}월 월간 리포트`;
+  const title=(mode==='year'?`${y}년 연간 종합 리포트`:`${y}년 ${Number(S.month.slice(5))}월 월간 리포트`)+(S.view?` — ${S.view} 입력분`:'');
   const period=mode==='year'?`${y}년 1월 ~ ${withData.length?withData[withData.length-1].m:1}월 (${withData.length}개월)`:monthLabel(S.month);
   // big items
   const big=rows.filter(t=>t.t==='지출').sort((a,b)=>b.a-a.a).slice(0,5);
