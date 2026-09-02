@@ -464,17 +464,17 @@ function applySettings(raw){const base=JSON.parse(JSON.stringify(DEFAULT_SETTING
 function applyAssets(data){S.assetsRaw=data||{months:[],accounts:[]};const map={};(S.assetsRaw.accounts||[]).forEach(a=>{Object.keys(a.bal||{}).forEach(m=>{(map[m]=map[m]||{bal:{}}).bal[a.id]=a.bal[m];});});S.assets=map;if(S.settings)S.settings.accounts=S.assetsRaw.accounts.map(a=>({id:a.id,group:a.group,name:a.name}));}
 function applyTx(year,list){Object.keys(S.ledgers).forEach(k=>{if(k.startsWith(year+'-'))delete S.ledgers[k];});(list||[]).forEach(t=>{const m=ym(t.d);(S.ledgers[m]=S.ledgers[m]||{tx:{}}).tx[t.id]=t;});S.loadedYears[year]=true;S.yearCache=null;}
 async function refresh(year,quiet){year=year||S.month.slice(0,4);if(S.syncing)return;S.syncing=true;setSync(true);
-  try{const data=await gs('getAll',year);applyAssets(data.assets);applySettings(data.settings);applyTx(year,data.tx);note('');showSetup(false);renderAll();}
+  try{const data=await gs('getAll',year);applyAssets(data.assets);applySettings(data.settings);applyTx(year,data.tx);ls.set('gb.cache.'+year,{t:Date.now(),data});note('');showSetup(false);renderAll();}
   catch(e){if(!quiet)note(String(e&&e.message||e)==='no-gs'?'':'불러오기 실패: '+(e&&e.message||e)+' — 연결 주소와 Apps Script 배포(모든 사용자)를 확인해 주세요.');showSetup(!apiUrl()||String(e&&e.message||e)==='no-gs');}
   S.syncing=false;setSync(false);}
-function setSync(on){const t=$('#today');if(t)t.style.opacity=on?.5:1;}
+function setSync(on,msg){const t=$('#today');if(!t)return;if(!t.dataset.orig)t.dataset.orig=t.textContent;t.textContent=on?(msg||'동기화 중…'):t.dataset.orig;t.style.opacity=on?.6:1;}
 async function saveSettings(patch){Object.assign(S.settings,patch);renderAll();const p=Object.assign({},patch);delete p.accounts;try{await gs('saveSettings',p);}catch(x){toast('설정 저장 실패');}}
 function txList(m){const d=S.ledgers[m];if(!d||!d.tx)return[];return Object.values(d.tx).filter(t=>t&&!t.del).sort((a,b)=>a.d<b.d?1:a.d>b.d?-1:(b.ts||0)-(a.ts||0));}
 function watchLedger(m){const y=m.slice(0,4);if(!S.loadedYears[y])refresh(y);}
 async function addTx(obj){const t=await gs('addTx',obj);(S.ledgers[ym(t.d)]=S.ledgers[ym(t.d)]||{tx:{}}).tx[t.id]=t;S.yearCache=null;renderHome();renderMonth();return t;}
 async function updateTx(obj,origM){const t=await gs('updateTx',obj);if(origM&&origM!==ym(t.d)&&S.ledgers[origM])delete S.ledgers[origM].tx[t.id];(S.ledgers[ym(t.d)]=S.ledgers[ym(t.d)]||{tx:{}}).tx[t.id]=t;S.yearCache=null;renderHome();renderMonth();return t;}
 async function deleteTx(id,m){await gs('deleteTx',id);if(S.ledgers[m])delete S.ledgers[m].tx[id];S.yearCache=null;renderHome();renderMonth();}
-async function loadYear(y){if(!S.loadedYears[y]){const data=await gs('getAll',y);applyTx(y,data.tx);}
+async function loadYear(y){if(!S.loadedYears[y]&&S.loadedYears[y]!==false){const data=await gs('getAll',y);applyTx(y,data.tx);}
   if(S.yearCache&&S.yearCache.y===y)return S.yearCache.rows;let rows=[];Object.keys(S.ledgers).filter(k=>k.startsWith(y+'-')).forEach(k=>{rows=rows.concat(txList(k));});S.yearCache={y,rows};return rows;}
 async function saveAssets(m,bal){const data=await gs('saveAssets',m,bal);applyAssets(data);renderAssets();}
 async function addAccount(group,name){const data=await gs('addAccount',group,name);applyAssets(data);renderAll();}
@@ -957,9 +957,13 @@ function renderAll(){renderWho();renderHome();renderMonth();renderAssets();rende
 // ---------- boot
 (function(){const d=new Date();$('#today').textContent=`${d.getFullYear()}년 ${d.getMonth()+1}월 ${d.getDate()}일 (${'일월화수목금토'[d.getDay()]})`;})();
 if('serviceWorker' in navigator){window.addEventListener('load',()=>{navigator.serviceWorker.register('./sw.js').catch(()=>{});});}
+function applyCache(year){const c=ls.get('gb.cache.'+year,null);if(!c||!c.data)return false;try{applyAssets(c.data.assets);applySettings(c.data.settings);applyTx(year,c.data.tx);S.loadedYears[year]=false;return true;}catch(e){return false;}}
 (async function boot(){
-  S.settings=JSON.parse(JSON.stringify(DEFAULT_SETTINGS));renderAll();
-  await refresh();
+  S.settings=JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
+  const y=S.month.slice(0,4);const cached=applyCache(y);
+  renderAll();
+  if(!cached)setSync(true,'불러오는 중…');
+  await refresh(y,cached);
 })();
 })();
 </script>
