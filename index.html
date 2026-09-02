@@ -359,7 +359,9 @@ body.rp-open{overflow:hidden}
     <div class="card">
       <h2>구글 시트 연결</h2>
       <div class="field"><label for="api-url">Apps Script 웹 앱 URL</label><input id="api-url" autocomplete="off"></div>
-      <div class="inline"><button class="ghost" id="api-save">다시 연결</button><button class="ghost" id="api-share">남편에게 보낼 링크 복사</button></div>
+      <div class="field" style="margin-top:10px"><label for="sheet-id">구글 시트 ID (빠른 읽기)</label><input id="sheet-id" autocomplete="off" placeholder="시트 주소의 /d/ 와 /edit 사이 부분"></div>
+      <p class="help" id="sheet-state" style="margin:4px 0 0"></p>
+      <div class="inline"><button class="ghost" id="sheet-save">빠른 읽기 켜기</button><button class="ghost" id="api-save">다시 연결</button><button class="ghost" id="api-share">남편에게 보낼 링크 복사</button></div>
       <p class="help">config.js에 주소를 넣어두면 이 칸은 잠기고, 링크만 공유해도 바로 연결돼요.</p>
     </div>
     <div class="card">
@@ -454,10 +456,39 @@ const S={db:null,settings:null,user:ls.get('gb.user',null),
   e:null /* entry form state */};
 
 // ---------- data layer (Google Sheets via Apps Script)
+function sheetId(){const v=(window.GB_SHEET_ID&&String(window.GB_SHEET_ID).length>20?window.GB_SHEET_ID:'')||ls.get('gb.sheet','')||'';return /^[A-Za-z0-9_-]{20,}$/.test(v)?v:'';}
+function gvDate(v){if(typeof v==='string'){const m=v.match(/^Date\((\d+),(\d+),(\d+)/);if(m)return `${m[1]}-${pad(Number(m[2])+1)}-${pad(m[3])}`;}return null;}
+async function gvSheet(name){const url=`https://docs.google.com/spreadsheets/d/${sheetId()}/gviz/tq?tqx=out:json&headers=1&sheet=${encodeURIComponent(name)}&_=${Date.now()}`;
+  const r=await fetchT(url,{method:'GET'},15000);const txt=await r.text();const i=txt.indexOf('{'),j=txt.lastIndexOf('}');if(i<0)throw new Error('시트 응답 오류');const o=JSON.parse(txt.slice(i,j+1));
+  if(o.status==='error')throw new Error((o.errors&&o.errors[0]&&o.errors[0].message)||'시트 조회 실패');
+  const cols=(o.table.cols||[]).map(c=>{const l=String(c.label||'').trim();return l||'';});
+  const rows=(o.table.rows||[]).map(r=>(r.c||[]).map(c=>{if(!c)return '';const d=gvDate(c.v);if(d)return d;return c.v==null?'':c.v;}));
+  return {cols,rows};}
+async function readSheetsDirect(year){
+  const [tx,as,st]=await Promise.all([gvSheet('거래내역'),gvSheet('자산'),gvSheet('설정')]);
+  const settings={};st.rows.forEach(r=>{const k=String(r[0]||'').trim();if(!k)return;try{settings[k]=JSON.parse(r[1]);}catch(e){settings[k]=r[1];}});
+  const months=as.cols.slice(2).map(h=>{const d=gvDate(h);if(d)return d.slice(0,7);const m=String(h).match(/(20\d{2})\D+(\d{1,2})/);return m?`${m[1]}-${pad(m[2])}`:String(h);});
+  const accounts=[];as.rows.forEach((r,i)=>{if(!r[1])return;const bal={};months.forEach((m,j)=>{const v=r[j+2];if(v!==''&&v!=null)bal[m]=Number(v)||0;});accounts.push({id:'r'+(i+2),row:i+2,group:String(r[0]),name:String(r[1]),bal});});
+  const list=[];tx.rows.forEach(r=>{if(!r[0])return;const d=String(r[1]||'').slice(0,10);if(year&&!d.startsWith(String(year)))return;
+    list.push({id:String(r[0]),d,t:String(r[2]),c:String(r[3]),s:String(r[4]),m:String(r[5]||''),a:Number(r[6])||0,cur:String(r[7]||'KRW'),fx:Number(r[8])||0,rate:Number(r[9])||1,f:r[10]==='Y'||r[10]===true,p:String(r[11]||''),acc:String(r[12]||''),u:String(r[13]||''),ts:Number(r[14])||0,edited:Number(r[15])||0});});
+  return {settings,assets:{months,accounts},tx:list,direct:true};}
 function apiUrl(){return (window.GB_API&&String(window.GB_API).startsWith('http')?window.GB_API:'')||ls.get('gb.api','')||'';}
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+async function fetchT(url,opt,ms){const c=new AbortController();const t=setTimeout(()=>c.abort(),ms);try{return await fetch(url,Object.assign({},opt,{signal:c.signal}));}finally{clearTimeout(t);}}
 async function gs(fn){const args=[].slice.call(arguments,1);const url=apiUrl();if(!url)throw new Error('no-gs');
-  const r=await fetch(url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({fn,args})});
-  if(!r.ok)throw new Error('HTTP '+r.status);const j=await r.json();if(j.error)throw new Error(j.error);return j.result;}
+  const READ=fn==='getAll';let last=null;
+  if(READ&&sheetId()){try{return await readSheetsDirect(args[0]);}catch(e){console.warn('direct read failed, falling back',e);}}
+  for(let attempt=0;attempt<3;attempt++){
+    try{
+      if(READ){ // GET 우선 (리다이렉트 없이 빠르고 안정적), 구버전 서버면 POST로
+        try{const r=await fetchT(url+'?fn=getAll&year='+encodeURIComponent(args[0]||'')+'&_='+Date.now(),{method:'GET'},25000);const txt=await r.text();const j=JSON.parse(txt);if(j.error)throw new Error(j.error);if('result' in j)return j.result;}
+        catch(e){if(e&&e.name==='AbortError')throw e;if(e instanceof SyntaxError){/* old server: fall through */}else if(!/JSON|Unexpected/.test(String(e)))throw e;}
+      }
+      const r=await fetchT(url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({fn,args})},25000);
+      if(!r.ok)throw new Error('HTTP '+r.status);const j=await r.json();if(j.error)throw new Error(j.error);return j.result;
+    }catch(e){last=e;if(!READ&&!(e&&e.name==='AbortError'))break; if(attempt<2){setSync(true,'구글 응답이 느려요… 다시 시도 중');await sleep(1500*(attempt+1));}}
+  }
+  throw last||new Error('unknown');}
 S.view=ls.get('gb.view','');function viewRows(rows){return S.view?rows.filter(t=>t.u===S.view):rows;}
 S.loadedYears={};S.syncing=false;
 function applySettings(raw){const base=JSON.parse(JSON.stringify(DEFAULT_SETTINGS));Object.keys(raw||{}).forEach(k=>{base[k]=raw[k];});S.settings=normalize(base);S.settings.accounts=(S.assetsRaw&&S.assetsRaw.accounts||[]).map(a=>({id:a.id,group:a.group,name:a.name}));}
@@ -465,7 +496,7 @@ function applyAssets(data){S.assetsRaw=data||{months:[],accounts:[]};const map={
 function applyTx(year,list){Object.keys(S.ledgers).forEach(k=>{if(k.startsWith(year+'-'))delete S.ledgers[k];});(list||[]).forEach(t=>{const m=ym(t.d);(S.ledgers[m]=S.ledgers[m]||{tx:{}}).tx[t.id]=t;});S.loadedYears[year]=true;S.yearCache=null;}
 async function refresh(year,quiet){year=year||S.month.slice(0,4);if(S.syncing)return;S.syncing=true;setSync(true);
   try{const data=await gs('getAll',year);applyAssets(data.assets);applySettings(data.settings);applyTx(year,data.tx);ls.set('gb.cache.'+year,{t:Date.now(),data});note('');showSetup(false);renderAll();}
-  catch(e){if(!quiet)note(String(e&&e.message||e)==='no-gs'?'':'불러오기 실패: '+(e&&e.message||e)+' — 연결 주소와 Apps Script 배포(모든 사용자)를 확인해 주세요.');showSetup(!apiUrl()||String(e&&e.message||e)==='no-gs');}
+  catch(e){const msg=String(e&&e.message||e);const slow=e&&e.name==='AbortError'||/Load failed|NetworkError|Failed to fetch|HTTP 5/.test(msg);if(msg!=='no-gs')note(slow?'구글 시트 응답이 느려요. 화면은 마지막 저장본이고, 잠시 후 자동으로 다시 불러와요.':'불러오기 실패: '+msg+' — 연결 주소와 Apps Script 배포(모든 사용자)를 확인해 주세요.');showSetup(!apiUrl()||msg==='no-gs');if(slow)setTimeout(()=>refresh(year,true),12000);}
   S.syncing=false;setSync(false);}
 function setSync(on,msg){const t=$('#today');if(!t)return;if(!t.dataset.orig)t.dataset.orig=t.textContent;t.textContent=on?(msg||'동기화 중…'):t.dataset.orig;t.style.opacity=on?.6:1;}
 async function saveSettings(patch){Object.assign(S.settings,patch);renderAll();const p=Object.assign({},patch);delete p.accounts;try{await gs('saveSettings',p);}catch(x){toast('설정 저장 실패');}}
@@ -790,7 +821,7 @@ $$('#settype button').forEach(b=>b.onclick=()=>{S.setType=b.dataset.t;$$('#setty
 function renderSettings(){
   if(!$('#v-settings').classList.contains('on'))return;
   const s=S.settings;
-  $('#goal').value=fmt(s.goal||0);$('#baseline').value=fmt(s.baseline||0);$('#api-url').value=apiUrl();$('#api-url').disabled=!!(window.GB_API&&String(window.GB_API).startsWith('http'));
+  $('#goal').value=fmt(s.goal||0);$('#baseline').value=fmt(s.baseline||0);$('#api-url').value=apiUrl();$('#api-url').disabled=!!(window.GB_API&&String(window.GB_API).startsWith('http'));$('#sheet-id').value=sheetId();$('#sheet-id').disabled=!!(window.GB_SHEET_ID&&String(window.GB_SHEET_ID).length>20);$('#sheet-state').textContent=sheetId()?'빠른 읽기 켜짐 (시트에서 직접 불러옴)':'꺼짐 — Apps Script를 통해 불러옴 (느림)';
   // pays
   const pl=$('#paylist');pl.innerHTML='';
   s.pays.forEach((p,i)=>{const d=document.createElement('div');d.className='sitem';d.innerHTML=`<span>${esc(p.name)}${p.owner?`<span class="tag">${esc(p.owner)}</span>`:''}<span class="tag">${esc(p.cur||'KRW')}</span></span><span class="subs"></span><button class="danger" aria-label="삭제">✕</button>`;d.querySelector('button').onclick=async()=>{if(!confirm(`'${p.name}' 결제수단을 지울까요? 기존 내역은 그대로 남아요.`))return;s.pays.splice(i,1);await saveSettings({pays:s.pays});};pl.appendChild(d);});
@@ -824,12 +855,13 @@ $('#exportcsv').onclick=async()=>{const y=S.month.slice(0,4);const rows=await lo
 $$('.fold').forEach(b=>{const k=b.dataset.fold;const open=ls.get('gb.fold.'+k,false);const body=$('#fold-'+k);body.hidden=!open;b.textContent=open?'접기':'펼치기';b.classList.toggle('on',open);
   b.onclick=()=>{const o=body.hidden;body.hidden=!o;b.textContent=o?'접기':'펼치기';b.classList.toggle('on',o);ls.set('gb.fold.'+k,o);};});
 // ---------- 구글 시트 연결 설정
-(function(){const q=new URLSearchParams(location.search);const api=q.get('api');if(api&&api.startsWith('http')){ls.set('gb.api',api);q.delete('api');history.replaceState(null,'',location.pathname+(q.toString()?'?'+q:'')+location.hash);}})();
+(function(){const q=new URLSearchParams(location.search);const api=q.get('api');const sh=q.get('sheet');let ch=false;if(api&&api.startsWith('http')){ls.set('gb.api',api);q.delete('api');ch=true;}if(sh&&/^[A-Za-z0-9_-]{20,}$/.test(sh)){ls.set('gb.sheet',sh);q.delete('sheet');ch=true;}if(ch)history.replaceState(null,'',location.pathname+(q.toString()?'?'+q:'')+location.hash);})();
 function showSetup(on){const el=$('#setup');if(!el)return;el.hidden=!on;if(on){$('#setup-url').value=ls.get('gb.api','');}}
 async function connectApi(inputSel){const url=($(inputSel).value||'').trim();if(!/^https:\/\/script\.google\.com\/macros\/s\/.+\/exec$/.test(url)){toast('Apps Script 웹 앱 URL(…/exec)을 붙여넣어 주세요');return;}ls.set('gb.api',url);toast('연결 확인 중…');await refresh(null,false);if(!$('#notice').textContent){toast('연결됐어요');}}
 $('#setup-go').onclick=()=>connectApi('#setup-url');
 $('#api-save').onclick=()=>connectApi('#api-url');
-$('#api-share').onclick=async()=>{const u=location.origin+location.pathname+'?api='+encodeURIComponent(apiUrl());try{await navigator.clipboard.writeText(u);toast('남편에게 보낼 링크를 복사했어요');}catch(e){prompt('이 링크를 남편에게 보내세요',u);}};
+$('#sheet-save').onclick=async()=>{const v=($('#sheet-id').value||'').trim();const m=v.match(/\/d\/([A-Za-z0-9_-]{20,})/);const id=m?m[1]:v;if(!/^[A-Za-z0-9_-]{20,}$/.test(id)){toast('시트 주소 또는 ID를 붙여넣어 주세요');return;}ls.set('gb.sheet',id);$('#sheet-id').value=id;toast('확인 중…');await refresh(null,false);if(!$('#notice').textContent)toast('빠른 읽기가 켜졌어요');};
+$('#api-share').onclick=async()=>{const u=location.origin+location.pathname+'?api='+encodeURIComponent(apiUrl())+(sheetId()?'&sheet='+sheetId():'');try{await navigator.clipboard.writeText(u);toast('남편에게 보낼 링크를 복사했어요');}catch(e){prompt('이 링크를 남편에게 보내세요',u);}};
 
 // ---------- 분석 리포트
 const RP={mode:'month'};
