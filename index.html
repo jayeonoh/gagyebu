@@ -478,15 +478,17 @@ async function fetchT(url,opt,ms){const c=new AbortController();const t=setTimeo
 async function gs(fn){const args=[].slice.call(arguments,1);const url=apiUrl();if(!url)throw new Error('no-gs');
   const READ=fn==='getAll';let last=null;
   if(READ&&sheetId()){try{return await readSheetsDirect(args[0]);}catch(e){console.warn('direct read failed, falling back',e);}}
+  const q=url+'?fn='+encodeURIComponent(fn)+'&args='+encodeURIComponent(JSON.stringify(args))+'&_='+Date.now();
   for(let attempt=0;attempt<3;attempt++){
     try{
-      if(READ){ // GET 우선 (리다이렉트 없이 빠르고 안정적), 구버전 서버면 POST로
-        try{const r=await fetchT(url+'?fn=getAll&year='+encodeURIComponent(args[0]||'')+'&_='+Date.now(),{method:'GET'},25000);const txt=await r.text();const j=JSON.parse(txt);if(j.error)throw new Error(j.error);if('result' in j)return j.result;}
-        catch(e){if(e&&e.name==='AbortError')throw e;if(e instanceof SyntaxError){/* old server: fall through */}else if(!/JSON|Unexpected/.test(String(e)))throw e;}
+      if(q.length<1900){ // GET: 리다이렉트 문제 없이 안정적. 구버전 서버(HTML 응답)면 POST로
+        try{const r=await fetchT(q,{method:'GET'},25000);const txt=await r.text();let j;try{j=JSON.parse(txt);}catch(pe){j=null;}
+          if(j){if(j.error)throw new Error(j.error);if('result' in j)return j.result;}}
+        catch(e){if(e&&e.name==='AbortError')throw e;if(!(e instanceof TypeError))throw e;/* 네트워크 오류 → POST 시도 */}
       }
       const r=await fetchT(url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({fn,args})},25000);
       if(!r.ok)throw new Error('HTTP '+r.status);const j=await r.json();if(j.error)throw new Error(j.error);return j.result;
-    }catch(e){last=e;if(!READ&&!(e&&e.name==='AbortError'))break; if(attempt<2){setSync(true,'구글 응답이 느려요… 다시 시도 중');await sleep(1500*(attempt+1));}}
+    }catch(e){last=e;const transient=e&&(e.name==='AbortError'||e instanceof TypeError||/HTTP 5|Load failed|Failed to fetch|NetworkError/.test(String(e.message||e)));if(!transient)break;if(attempt<2){setSync(true,'구글 응답이 느려요… 다시 시도 중');await sleep(1500*(attempt+1));}}
   }
   throw last||new Error('unknown');}
 S.view=ls.get('gb.view','');function viewRows(rows){return S.view?rows.filter(t=>t.u===S.view):rows;}
@@ -495,19 +497,34 @@ function applySettings(raw){const base=JSON.parse(JSON.stringify(DEFAULT_SETTING
 function applyAssets(data){S.assetsRaw=data||{months:[],accounts:[]};const map={};(S.assetsRaw.accounts||[]).forEach(a=>{Object.keys(a.bal||{}).forEach(m=>{(map[m]=map[m]||{bal:{}}).bal[a.id]=a.bal[m];});});S.assets=map;if(S.settings)S.settings.accounts=S.assetsRaw.accounts.map(a=>({id:a.id,group:a.group,name:a.name}));}
 function applyTx(year,list){Object.keys(S.ledgers).forEach(k=>{if(k.startsWith(year+'-'))delete S.ledgers[k];});(list||[]).forEach(t=>{const m=ym(t.d);(S.ledgers[m]=S.ledgers[m]||{tx:{}}).tx[t.id]=t;});S.loadedYears[year]=true;S.yearCache=null;}
 async function refresh(year,quiet){year=year||S.month.slice(0,4);if(S.syncing)return;S.syncing=true;setSync(true);
-  try{const data=await gs('getAll',year);applyAssets(data.assets);applySettings(data.settings);applyTx(year,data.tx);ls.set('gb.cache.'+year,{t:Date.now(),data});note('');showSetup(false);renderAll();}
+  try{const data=await gs('getAll',year);applyAssets(data.assets);applySettings(data.settings);applyTx(year,data.tx);obReplay();ls.set('gb.cache.'+year,{t:Date.now(),data});note('');showSetup(false);renderAll();}
   catch(e){const msg=String(e&&e.message||e);const slow=e&&e.name==='AbortError'||/Load failed|NetworkError|Failed to fetch|HTTP 5/.test(msg);if(msg!=='no-gs')note(slow?'구글 시트 응답이 느려요. 화면은 마지막 저장본이고, 잠시 후 자동으로 다시 불러와요.':'불러오기 실패: '+msg+' — 연결 주소와 Apps Script 배포(모든 사용자)를 확인해 주세요.');showSetup(!apiUrl()||msg==='no-gs');if(slow)setTimeout(()=>refresh(year,true),12000);}
   S.syncing=false;setSync(false);}
 function setSync(on,msg){const t=$('#today');if(!t)return;if(!t.dataset.orig)t.dataset.orig=t.textContent;t.textContent=on?(msg||'동기화 중…'):t.dataset.orig;t.style.opacity=on?.6:1;}
-async function saveSettings(patch){Object.assign(S.settings,patch);renderAll();const p=Object.assign({},patch);delete p.accounts;try{await gs('saveSettings',p);}catch(x){toast('설정 저장 실패');}}
+// ---------- 전송 대기열(outbox): 즉시 반영 + 뒤에서 전송, 실패 시 자동 재시도
+const OB={list:ls.get('gb.outbox',[]),busy:false};
+function obSave(){ls.set('gb.outbox',OB.list);obBadge();}
+function obBadge(){let el=$('#obbadge');if(!el){el=document.createElement('div');el.id='obbadge';el.className='notice';el.style.cssText='margin-top:8px;display:flex;justify-content:space-between;align-items:center';$('#notice').after(el);}const n=OB.list.length;el.hidden=!n;if(n)el.innerHTML=`<span>전송 대기 ${n}건 — 연결되면 자동으로 저장돼요</span><button class="ghost" id="obretry" style="padding:4px 10px;font-size:12px">지금 전송</button>`;const b=$('#obretry');if(b)b.onclick=()=>obFlush(true);}
+function obPush(fn,args){OB.list.push({fn,args,ts:Date.now()});obSave();obFlush();}
+async function obFlush(manual){if(OB.busy||!OB.list.length)return;if(!apiUrl()){if(manual)toast('연결 주소가 없어요');return;}OB.busy=true;
+  while(OB.list.length){const op=OB.list[0];try{await gs(op.fn,...op.args);OB.list.shift();obSave();}catch(e){if(manual)toast('아직 전송이 안 돼요: '+(e&&e.message||e));break;}}
+  OB.busy=false;obBadge();if(!OB.list.length)refresh(null,true);}
+function obReplay(){OB.list.forEach(op=>{try{
+  if(op.fn==='addTx'||op.fn==='updateTx'){const t=op.args[0];(S.ledgers[ym(t.d)]=S.ledgers[ym(t.d)]||{tx:{}}).tx[t.id]=t;}
+  else if(op.fn==='deleteTx'){Object.values(S.ledgers).forEach(l=>{if(l.tx)delete l.tx[op.args[0]];});}
+  else if(op.fn==='saveAssets'){const [m,bal]=op.args;S.assets[m]={bal:Object.assign({},(S.assets[m]||{}).bal||{},bal)};}
+  else if(op.fn==='saveSettings'){Object.assign(S.settings,op.args[0]);}
+}catch(e){}});S.yearCache=null;}
+setInterval(()=>{if(document.visibilityState==='visible')obFlush();},20000);
+async function saveSettings(patch){Object.assign(S.settings,patch);renderAll();const p=Object.assign({},patch);delete p.accounts;obPush('saveSettings',[p]);}
 function txList(m){const d=S.ledgers[m];if(!d||!d.tx)return[];return Object.values(d.tx).filter(t=>t&&!t.del).sort((a,b)=>a.d<b.d?1:a.d>b.d?-1:(b.ts||0)-(a.ts||0));}
 function watchLedger(m){const y=m.slice(0,4);if(!S.loadedYears[y])refresh(y);}
-async function addTx(obj){const t=await gs('addTx',obj);(S.ledgers[ym(t.d)]=S.ledgers[ym(t.d)]||{tx:{}}).tx[t.id]=t;S.yearCache=null;renderHome();renderMonth();return t;}
-async function updateTx(obj,origM){const t=await gs('updateTx',obj);if(origM&&origM!==ym(t.d)&&S.ledgers[origM])delete S.ledgers[origM].tx[t.id];(S.ledgers[ym(t.d)]=S.ledgers[ym(t.d)]||{tx:{}}).tx[t.id]=t;S.yearCache=null;renderHome();renderMonth();return t;}
-async function deleteTx(id,m){await gs('deleteTx',id);if(S.ledgers[m])delete S.ledgers[m].tx[id];S.yearCache=null;renderHome();renderMonth();}
+async function addTx(obj){const t=Object.assign({},obj,{id:obj.id||uid()});(S.ledgers[ym(t.d)]=S.ledgers[ym(t.d)]||{tx:{}}).tx[t.id]=t;S.yearCache=null;renderHome();renderMonth();obPush('addTx',[t]);return t;}
+async function updateTx(obj,origM){const t=Object.assign({},obj,{edited:Date.now()});if(origM&&origM!==ym(t.d)&&S.ledgers[origM])delete S.ledgers[origM].tx[t.id];(S.ledgers[ym(t.d)]=S.ledgers[ym(t.d)]||{tx:{}}).tx[t.id]=t;S.yearCache=null;renderHome();renderMonth();obPush('updateTx',[t]);return t;}
+async function deleteTx(id,m){if(S.ledgers[m])delete S.ledgers[m].tx[id];S.yearCache=null;renderHome();renderMonth();obPush('deleteTx',[id]);}
 async function loadYear(y){if(!S.loadedYears[y]&&S.loadedYears[y]!==false){const data=await gs('getAll',y);applyTx(y,data.tx);}
   if(S.yearCache&&S.yearCache.y===y)return S.yearCache.rows;let rows=[];Object.keys(S.ledgers).filter(k=>k.startsWith(y+'-')).forEach(k=>{rows=rows.concat(txList(k));});S.yearCache={y,rows};return rows;}
-async function saveAssets(m,bal){const data=await gs('saveAssets',m,bal);applyAssets(data);renderAssets();}
+async function saveAssets(m,bal){S.assets[m]={bal:Object.assign({},(S.assets[m]||{}).bal||{},bal)};renderAssets();obPush('saveAssets',[m,bal]);}
 async function addAccount(group,name){const data=await gs('addAccount',group,name);applyAssets(data);renderAll();}
 async function deleteAccount(id){const data=await gs('deleteAccount',id);applyAssets(data);renderAll();}
 // polling: other person's changes show up within ~45 s
@@ -989,13 +1006,14 @@ function renderAll(){renderWho();renderHome();renderMonth();renderAssets();rende
 // ---------- boot
 (function(){const d=new Date();$('#today').textContent=`${d.getFullYear()}년 ${d.getMonth()+1}월 ${d.getDate()}일 (${'일월화수목금토'[d.getDay()]})`;})();
 if('serviceWorker' in navigator){window.addEventListener('load',()=>{navigator.serviceWorker.register('./sw.js').catch(()=>{});});}
-function applyCache(year){const c=ls.get('gb.cache.'+year,null);if(!c||!c.data)return false;try{applyAssets(c.data.assets);applySettings(c.data.settings);applyTx(year,c.data.tx);S.loadedYears[year]=false;return true;}catch(e){return false;}}
+function applyCache(year){const c=ls.get('gb.cache.'+year,null);if(!c||!c.data)return false;try{applyAssets(c.data.assets);applySettings(c.data.settings);applyTx(year,c.data.tx);obReplay();S.loadedYears[year]=false;return true;}catch(e){return false;}}
 (async function boot(){
   S.settings=JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
   const y=S.month.slice(0,4);const cached=applyCache(y);
   renderAll();
   if(!cached)setSync(true,'불러오는 중…');
   await refresh(y,cached);
+  obBadge();obFlush();
 })();
 })();
 </script>
