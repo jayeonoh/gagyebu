@@ -1,3 +1,3 @@
-window.SB_URL = "https://sjymxfjilxqeiznvpqpq.supabase.co/rest/v1/";
+window.SB_URL = "https://sjymxfjilxqeiznvpqpq.supabase.co";
 window.SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNqeW14ZmppbHhxZWl6bnZwcXBxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg0MDgzOTMsImV4cCI6MjEwMzk4NDM5M30.O-4XkQlkAtZJfgmJ22blWwKvaQpXpGOOVt880Zxpx9k";
 window.GB_SHEET_ID = "1wDAaL_3lFEFBJSsIxzsZ2EzDaieG8p52zBe5kRtOCEI";
