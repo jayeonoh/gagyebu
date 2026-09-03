@@ -477,7 +477,8 @@ S.view=ls.get('gb.view','');function viewRows(rows){return S.view?rows.filter(t=
 S.loadedYears={};S.syncing=false;S.user_email='';
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 async function fetchT(url,opt,ms){const c=new AbortController();const t=setTimeout(()=>c.abort(),ms);try{return await fetch(url,Object.assign({},opt,{signal:c.signal}));}finally{clearTimeout(t);}}
-function sbCfg(){const u=(window.SB_URL||'').trim(),k=(window.SB_KEY||'').trim();return (/^https:\/\/.+\.supabase\.co$/.test(u)&&k.length>20)?{u,k}:null;}
+function sbCfg(){const u=String(window.SB_URL||'').trim().replace(/(\.supabase\.(co|in)).*$/,'$1'),k=String(window.SB_KEY||'').trim();return (/^https:\/\/[a-z0-9-]+\.supabase\.(co|in)$/.test(u)&&k.length>20&&!/여기에/.test(k))?{u,k}:null;}
+function sbWhy(){if(!window.supabase)return '앱 부품(supabase 라이브러리)을 불러오지 못했어요. 인터넷 연결을 확인하고 앱을 닫았다 다시 열어 주세요.';const u=String(window.SB_URL||'').trim().replace(/(\.supabase\.(co|in)).*$/,'$1');if(!u||/xxxx/.test(u))return 'config.js에 SB_URL(Project URL)이 없어요.';if(!/^https:\/\/[a-z0-9-]+\.supabase\.(co|in)$/.test(u))return 'config.js의 SB_URL 형식이 이상해요: '+u.slice(0,40);const k=String(window.SB_KEY||'').trim();if(!k||k.length<=20||/여기에/.test(k))return 'config.js에 SB_KEY(anon public 키)가 없거나 짧아요.';return 'config.js 설정을 확인해 주세요.';}
 let sb=null;
 function sbInit(){if(sb)return sb;const c=sbCfg();if(!c||!window.supabase)return null;sb=window.supabase.createClient(c.u,c.k,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:false}});return sb;}
 function sbErr(e){const m=String(e&&e.message||e);if(/paused|503|Failed to fetch|Load failed/i.test(m))return '서버가 잠들어 있거나 연결이 안 돼요. Supabase 관리 페이지에서 프로젝트가 Paused면 Restore를 눌러 주세요.';if(/JWT|401|permission|row-level|RLS/i.test(m))return '로그인이 만료됐어요. 다시 로그인해 주세요.';return m;}
@@ -930,7 +931,7 @@ $$('.fold').forEach(b=>{const k=b.dataset.fold;const open=ls.get('gb.fold.'+k,fa
   b.onclick=()=>{const o=body.hidden;body.hidden=!o;b.textContent=o?'접기':'펼치기';b.classList.toggle('on',o);ls.set('gb.fold.'+k,o);};});
 // ---------- 로그인
 function showLogin(on,msg){const el=$('#login');el.hidden=!on;$('#login-msg').textContent=msg||'';document.body.classList.toggle('login-open',on);if(on)setTimeout(()=>$('#login-email').focus(),50);}
-async function doLogin(){const db=sbInit();if(!db){showLogin(true,'config.js에 Supabase 주소/키가 없어요');return;}
+async function doLogin(){const db=sbInit();if(!db){showLogin(true,sbWhy());return;}
   const email=($('#login-email').value||'').trim(),pw=$('#login-pw').value||'';if(!email||!pw){$('#login-msg').textContent='이메일과 비밀번호를 입력해 주세요';return;}
   const btn=$('#login-go');btn.disabled=true;$('#login-msg').textContent='확인 중…';
   const {data,error}=await db.auth.signInWithPassword({email,password:pw});btn.disabled=false;
@@ -1071,7 +1072,7 @@ function applyCache(year){const c=ls.get('gb.cache.'+year,null);if(!c||!c.data)r
   S.settings=JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
   const y=S.month.slice(0,4);const cached=applyCache(y);renderAll();obBadge();
   const db=sbInit();
-  if(!db){note('config.js에 Supabase 주소(SB_URL)와 키(SB_KEY)를 넣어 주세요.');showLogin(true,'설정이 아직 없어요');return;}
+  if(!db){note(sbWhy());showLogin(true,sbWhy());return;}
   const {data}=await db.auth.getSession();
   db.auth.onAuthStateChange((ev,session)=>{if(ev==='SIGNED_OUT'){S.session=null;showLogin(true);}else if(session){S.session=session;S.user_email=session.user.email;}});
   if(data&&data.session){onSession(data.session);}else showLogin(true);
