@@ -28,6 +28,7 @@
   color-scheme:light only;
 }
 *{box-sizing:border-box}
+[hidden]{display:none!important}
 html{height:100%;overflow:hidden;overscroll-behavior:none;-webkit-text-size-adjust:100%}
 body{height:100%;overflow-y:auto;overflow-x:hidden;overscroll-behavior:none;-webkit-overflow-scrolling:touch;touch-action:pan-y;position:relative}
 input,select,textarea{font-size:16px!important}
@@ -242,8 +243,15 @@ body.rp-open{overflow:hidden}
   .rp-kpis div,.rp-t tr.hl td,.rp-sum,.rp-save{-webkit-print-color-adjust:exact;print-color-adjust:exact}
 }
 
+#login{position:fixed;inset:0;background:linear-gradient(180deg,var(--bg-top),var(--bg));z-index:90;display:flex;align-items:center;justify-content:center;padding:24px;overflow:auto}
+.login-box{width:100%;max-width:360px;background:var(--surface);border:1px solid var(--line);border-radius:22px;padding:28px 22px;box-shadow:var(--shadow)}
+.login-logo{width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,var(--accent-2),var(--accent));color:#fff;font-weight:700;font-size:26px;display:flex;align-items:center;justify-content:center;margin:0 auto 10px}
+.login-box h1{font-family:"Fraunces","IBM Plex Sans KR",serif;text-align:center;font-size:24px;margin:0;color:var(--accent)}
+.login-box p{text-align:center;font-size:13px;color:var(--muted);margin:6px 0 18px}
+body.login-open .fab,body.login-open nav.tabs{display:none}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="./config.js"></script>
 </head>
 <body>
@@ -255,11 +263,6 @@ body.rp-open{overflow:hidden}
     <div class="who" id="who"></div>
   </header>
   <div id="notice" hidden class="notice warn"></div>
-  <div id="setup" hidden class="card">
-    <h2>구글 시트 연결</h2>
-    <p class="help" style="margin:0 0 8px">Apps Script에서 배포한 <b>웹 앱 URL</b>(https://script.google.com/macros/s/…/exec)을 붙여넣으세요. 한 번만 하면 돼요.</p>
-    <div class="inline"><input id="setup-url" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off" style="min-width:0"><button class="ghost" id="setup-go" style="background:var(--accent);color:var(--accent-ink);font-weight:600">연결</button></div>
-  </div>
 
   <!-- 홈 -->
   <section class="view on" id="v-home">
@@ -357,12 +360,15 @@ body.rp-open{overflow:hidden}
       <div class="slist" id="userlist"></div>
     </div>
     <div class="card">
-      <h2>구글 시트 연결</h2>
-      <div class="field"><label for="api-url">Apps Script 웹 앱 URL</label><input id="api-url" autocomplete="off"></div>
-      <div class="field" style="margin-top:10px"><label for="sheet-id">구글 시트 ID (빠른 읽기)</label><input id="sheet-id" autocomplete="off" placeholder="시트 주소의 /d/ 와 /edit 사이 부분"></div>
-      <p class="help" id="sheet-state" style="margin:4px 0 0"></p>
-      <div class="inline"><button class="ghost" id="sheet-save">빠른 읽기 켜기</button><button class="ghost" id="api-save">다시 연결</button><button class="ghost" id="api-share">남편에게 보낼 링크 복사</button></div>
-      <p class="help">config.js에 주소를 넣어두면 이 칸은 잠기고, 링크만 공유해도 바로 연결돼요.</p>
+      <h2>계정</h2>
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><span id="acct-email" style="font-size:14px;overflow:hidden;text-overflow:ellipsis"></span><button class="ghost" id="logout">로그아웃</button></div>
+      <p class="help">로그인은 한 번만 하면 이 폰에 계속 유지돼요.</p>
+    </div>
+    <div class="card">
+      <h2>구글 시트에서 가져오기</h2>
+      <p class="help" style="margin:0 0 8px">예전 가계부 시트의 거래·자산·설정을 한 번에 복사해요. (시트가 "링크가 있는 모든 사용자 – 뷰어"로 공유돼 있어야 해요)</p>
+      <div class="inline"><input id="imp-sheet" placeholder="구글 시트 주소 붙여넣기"><button class="ghost" id="imp-go">가져오기</button></div>
+      <p class="help" id="imp-state"></p>
     </div>
     <div class="card">
       <h2>내보내기</h2>
@@ -385,6 +391,17 @@ body.rp-open{overflow:hidden}
 <div id="report" hidden>
   <div class="rp-bar"><button class="ic" id="rp-close" aria-label="닫기">✕</button><div class="pillrow" id="rp-mode"><button data-m="month" class="on">월간</button><button data-m="year">연간</button></div><span class="sp"></span><button class="ic" id="rp-copy">요약 복사</button><button class="ic primary" id="rp-print">PDF</button></div>
   <div class="rp-doc" id="rp-body"></div>
+</div>
+<div id="login" hidden>
+  <div class="login-box">
+    <div class="login-logo">₩</div>
+    <h1>우리집 가계부</h1>
+    <p>가족만 쓰는 앱이에요. 받은 계정으로 로그인하세요.</p>
+    <div class="field"><label for="login-email">이메일</label><input id="login-email" type="email" autocomplete="username" inputmode="email"></div>
+    <div class="field" style="margin-top:10px"><label for="login-pw">비밀번호</label><input id="login-pw" type="password" autocomplete="current-password"></div>
+    <button class="primary" id="login-go">로그인</button>
+    <p class="help" id="login-msg" style="text-align:center;min-height:18px"></p>
+  </div>
 </div>
 <div class="modal" id="modal"><div class="sheet" id="sheet"></div></div>
 <div class="toast" id="toast"></div>
@@ -455,81 +472,121 @@ const S={db:null,settings:null,user:ls.get('gb.user',null),
   amonth:ym(todayISO()),assets:{},dirty:{},setType:'지출',openCat:null,
   e:null /* entry form state */};
 
-// ---------- data layer (Google Sheets via Apps Script)
-function sheetId(){const v=(window.GB_SHEET_ID&&String(window.GB_SHEET_ID).length>20?window.GB_SHEET_ID:'')||ls.get('gb.sheet','')||'';return /^[A-Za-z0-9_-]{20,}$/.test(v)?v:'';}
-function gvDate(v){if(typeof v==='string'){const m=v.match(/^Date\((\d+),(\d+),(\d+)/);if(m)return `${m[1]}-${pad(Number(m[2])+1)}-${pad(m[3])}`;}return null;}
-async function gvSheet(name){const url=`https://docs.google.com/spreadsheets/d/${sheetId()}/gviz/tq?tqx=out:json&headers=1&sheet=${encodeURIComponent(name)}&_=${Date.now()}`;
-  const r=await fetchT(url,{method:'GET'},15000);const txt=await r.text();const i=txt.indexOf('{'),j=txt.lastIndexOf('}');if(i<0)throw new Error('시트 응답 오류');const o=JSON.parse(txt.slice(i,j+1));
-  if(o.status==='error')throw new Error((o.errors&&o.errors[0]&&o.errors[0].message)||'시트 조회 실패');
-  const cols=(o.table.cols||[]).map(c=>{const l=String(c.label||'').trim();return l||'';});
-  const rows=(o.table.rows||[]).map(r=>(r.c||[]).map(c=>{if(!c)return '';const d=gvDate(c.v);if(d)return d;return c.v==null?'':c.v;}));
-  return {cols,rows};}
-async function readSheetsDirect(year){
-  const [tx,as,st]=await Promise.all([gvSheet('거래내역'),gvSheet('자산'),gvSheet('설정')]);
-  const settings={};st.rows.forEach(r=>{const k=String(r[0]||'').trim();if(!k)return;try{settings[k]=JSON.parse(r[1]);}catch(e){settings[k]=r[1];}});
-  const months=as.cols.slice(2).map(h=>{const d=gvDate(h);if(d)return d.slice(0,7);const m=String(h).match(/(20\d{2})\D+(\d{1,2})/);return m?`${m[1]}-${pad(m[2])}`:String(h);});
-  const accounts=[];as.rows.forEach((r,i)=>{if(!r[1])return;const bal={};months.forEach((m,j)=>{const v=r[j+2];if(v!==''&&v!=null)bal[m]=Number(v)||0;});accounts.push({id:'r'+(i+2),row:i+2,group:String(r[0]),name:String(r[1]),bal});});
-  const list=[];tx.rows.forEach(r=>{if(!r[0])return;const d=String(r[1]||'').slice(0,10);if(year&&!d.startsWith(String(year)))return;
-    list.push({id:String(r[0]),d,t:String(r[2]),c:String(r[3]),s:String(r[4]),m:String(r[5]||''),a:Number(r[6])||0,cur:String(r[7]||'KRW'),fx:Number(r[8])||0,rate:Number(r[9])||1,f:r[10]==='Y'||r[10]===true,p:String(r[11]||''),acc:String(r[12]||''),u:String(r[13]||''),ts:Number(r[14])||0,edited:Number(r[15])||0});});
-  return {settings,assets:{months,accounts},tx:list,direct:true};}
-function apiUrl(){return (window.GB_API&&String(window.GB_API).startsWith('http')?window.GB_API:'')||ls.get('gb.api','')||'';}
+// ---------- data layer (Supabase)
+S.view=ls.get('gb.view','');function viewRows(rows){return S.view?rows.filter(t=>t.u===S.view):rows;}
+S.loadedYears={};S.syncing=false;S.user_email='';
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 async function fetchT(url,opt,ms){const c=new AbortController();const t=setTimeout(()=>c.abort(),ms);try{return await fetch(url,Object.assign({},opt,{signal:c.signal}));}finally{clearTimeout(t);}}
-async function gs(fn){const args=[].slice.call(arguments,1);const url=apiUrl();if(!url)throw new Error('no-gs');
-  const READ=fn==='getAll';let last=null;
-  if(READ&&sheetId()){try{return await readSheetsDirect(args[0]);}catch(e){console.warn('direct read failed, falling back',e);}}
-  const q=url+'?fn='+encodeURIComponent(fn)+'&args='+encodeURIComponent(JSON.stringify(args))+'&_='+Date.now();
-  for(let attempt=0;attempt<3;attempt++){
-    try{
-      if(q.length<1900){ // GET: 리다이렉트 문제 없이 안정적. 구버전 서버(HTML 응답)면 POST로
-        try{const r=await fetchT(q,{method:'GET'},25000);const txt=await r.text();let j;try{j=JSON.parse(txt);}catch(pe){j=null;}
-          if(j){if(j.error)throw new Error(j.error);if('result' in j)return j.result;}}
-        catch(e){if(e&&e.name==='AbortError')throw e;if(!(e instanceof TypeError))throw e;/* 네트워크 오류 → POST 시도 */}
-      }
-      const r=await fetchT(url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({fn,args})},25000);
-      if(!r.ok)throw new Error('HTTP '+r.status);const j=await r.json();if(j.error)throw new Error(j.error);return j.result;
-    }catch(e){last=e;const transient=e&&(e.name==='AbortError'||e instanceof TypeError||/HTTP 5|Load failed|Failed to fetch|NetworkError/.test(String(e.message||e)));if(!transient)break;if(attempt<2){setSync(true,'구글 응답이 느려요… 다시 시도 중');await sleep(1500*(attempt+1));}}
-  }
-  throw last||new Error('unknown');}
-S.view=ls.get('gb.view','');function viewRows(rows){return S.view?rows.filter(t=>t.u===S.view):rows;}
-S.loadedYears={};S.syncing=false;
+function sbCfg(){const u=(window.SB_URL||'').trim(),k=(window.SB_KEY||'').trim();return (/^https:\/\/.+\.supabase\.co$/.test(u)&&k.length>20)?{u,k}:null;}
+let sb=null;
+function sbInit(){if(sb)return sb;const c=sbCfg();if(!c||!window.supabase)return null;sb=window.supabase.createClient(c.u,c.k,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:false}});return sb;}
+function sbErr(e){const m=String(e&&e.message||e);if(/paused|503|Failed to fetch|Load failed/i.test(m))return '서버가 잠들어 있거나 연결이 안 돼요. Supabase 관리 페이지에서 프로젝트가 Paused면 Restore를 눌러 주세요.';if(/JWT|401|permission|row-level|RLS/i.test(m))return '로그인이 만료됐어요. 다시 로그인해 주세요.';return m;}
+// ---- 시트 직접 읽기(가져오기용)
+function sheetId(){const v=(window.GB_SHEET_ID&&String(window.GB_SHEET_ID).length>20?window.GB_SHEET_ID:'')||ls.get('gb.sheet','')||'';return /^[A-Za-z0-9_-]{20,}$/.test(v)?v:'';}
+function gvDate(v){if(typeof v==='string'){const m=v.match(/^Date\((\d+),(\d+),(\d+)/);if(m)return `${m[1]}-${pad(Number(m[2])+1)}-${pad(m[3])}`;}return null;}
+async function gvSheet(id,name){const url=`https://docs.google.com/spreadsheets/d/${id}/gviz/tq?tqx=out:json&headers=1&sheet=${encodeURIComponent(name)}&_=${Date.now()}`;
+  const r=await fetchT(url,{method:'GET'},20000);const txt=await r.text();const i=txt.indexOf('{'),j=txt.lastIndexOf('}');if(i<0)throw new Error('시트 응답 오류 (공유 설정 확인)');const o=JSON.parse(txt.slice(i,j+1));
+  if(o.status==='error')throw new Error((o.errors&&o.errors[0]&&o.errors[0].message)||'시트 조회 실패');
+  const cols=(o.table.cols||[]).map(c=>String(c.label||'').trim());
+  const rows=(o.table.rows||[]).map(r=>(r.c||[]).map(c=>{if(!c)return '';const d=gvDate(c.v);if(d)return d;return c.v==null?'':c.v;}));
+  return {cols,rows};}
+async function readSheetsDirect(id){
+  const [tx,as,st]=await Promise.all([gvSheet(id,'거래내역'),gvSheet(id,'자산'),gvSheet(id,'설정')]);
+  const settings={};st.rows.forEach(r=>{const k=String(r[0]||'').trim();if(!k)return;try{settings[k]=JSON.parse(r[1]);}catch(e){settings[k]=r[1];}});
+  const months=as.cols.slice(2).map(h=>{const d=gvDate(h);if(d)return d.slice(0,7);const m=String(h).match(/(20\d{2})\D+(\d{1,2})/);return m?`${m[1]}-${pad(m[2])}`:String(h);});
+  const accounts=[];as.rows.forEach((r,i)=>{if(!r[1])return;const bal={};months.forEach((m,j)=>{const v=r[j+2];if(v!==''&&v!=null)bal[m]=Number(v)||0;});accounts.push({id:'r'+(i+2),group:String(r[0]),name:String(r[1]),bal});});
+  const list=[];tx.rows.forEach(r=>{if(!r[0])return;const d=String(r[1]||'').slice(0,10);if(!/^\d{4}-\d{2}-\d{2}$/.test(d))return;
+    list.push({id:String(r[0]),d,t:String(r[2]),c:String(r[3]),s:String(r[4]),m:String(r[5]||''),a:Number(r[6])||0,cur:String(r[7]||'KRW'),fx:Number(r[8])||0,rate:Number(r[9])||1,f:r[10]==='Y'||r[10]===true,p:String(r[11]||''),acc:String(r[12]||''),u:String(r[13]||''),ts:Number(r[14])||0,edited:Number(r[15])||0});});
+  return {settings,assets:{months,accounts},tx:list};}
+// ---- Supabase CRUD
+const TXCOLS='id,d,t,c,s,m,a,cur,fx,rate,f,p,acc,u,ts,edited';
+function rowToTx(r){return {id:r.id,d:String(r.d).slice(0,10),t:r.t,c:r.c,s:r.s,m:r.m||'',a:Number(r.a)||0,cur:r.cur||'KRW',fx:Number(r.fx)||0,rate:Number(r.rate)||1,f:!!r.f,p:r.p||'',acc:r.acc||'',u:r.u||'',ts:Number(r.ts)||0,edited:Number(r.edited)||0};}
+function txToRow(t){return {id:t.id,d:t.d,t:t.t,c:t.c,s:t.s,m:t.m||'',a:Number(t.a)||0,cur:t.cur||'KRW',fx:Number(t.fx)||0,rate:Number(t.rate)||1,f:!!t.f,p:t.p||'',acc:t.acc||'',u:t.u||'',ts:Number(t.ts)||Date.now(),edited:Number(t.edited)||null};}
+async function sbGetAll(year){
+  const db=sbInit();if(!db)throw new Error('no-sb');
+  const y=String(year||S.month.slice(0,4));
+  const [tx,acc,bal,st]=await Promise.all([
+    db.from('tx').select(TXCOLS).gte('d',y+'-01-01').lte('d',y+'-12-31').limit(10000),
+    db.from('accounts').select('id,grp,name,ord').order('ord'),
+    db.from('assets_bal').select('month,account_id,value'),
+    db.from('settings').select('key,value')]);
+  for(const r of [tx,acc,bal,st])if(r.error)throw r.error;
+  const settings={};st.data.forEach(r=>settings[r.key]=r.value);
+  const months=[...new Set(bal.data.map(r=>r.month))].sort();
+  const accounts=acc.data.map(a=>({id:a.id,group:a.grp,name:a.name,bal:{}}));
+  bal.data.forEach(r=>{const a=accounts.find(x=>x.id===r.account_id);if(a)a.bal[r.month]=Number(r.value)||0;});
+  return {settings,assets:{months,accounts},tx:tx.data.map(rowToTx)};}
+const API={
+  getAll:sbGetAll,
+  addTx:async t=>{const {error}=await sbInit().from('tx').upsert(txToRow(t));if(error)throw error;return t;},
+  updateTx:async t=>{const {error}=await sbInit().from('tx').upsert(txToRow(t));if(error)throw error;return t;},
+  deleteTx:async id=>{const {error}=await sbInit().from('tx').delete().eq('id',id);if(error)throw error;return {ok:true};},
+  saveSettings:async patch=>{const rows=Object.keys(patch).map(k=>({key:k,value:patch[k]}));const {error}=await sbInit().from('settings').upsert(rows);if(error)throw error;return true;},
+  learnAdd:async entries=>{const db=sbInit();const {data,error}=await db.from('settings').select('value').eq('key','learn').maybeSingle();if(error)throw error;const learn=Object.assign({},(data&&data.value)||{},entries);const keys=Object.keys(learn);while(keys.length>400)delete learn[keys.shift()];const r=await db.from('settings').upsert({key:'learn',value:learn});if(r.error)throw r.error;return true;},
+  saveAssets:async(month,values)=>{const rows=Object.keys(values).map(id=>({month,account_id:id,value:Number(values[id])||0}));if(!rows.length)return true;const {error}=await sbInit().from('assets_bal').upsert(rows);if(error)throw error;return true;},
+  addAccount:async(group,name,id)=>{const db=sbInit();const {data}=await db.from('accounts').select('ord').order('ord',{ascending:false}).limit(1);const ord=(data&&data[0]?Number(data[0].ord):0)+1;const {error}=await db.from('accounts').upsert({id,grp:group,name,ord});if(error)throw error;return true;},
+  deleteAccount:async id=>{const db=sbInit();await db.from('assets_bal').delete().eq('account_id',id);const {error}=await db.from('accounts').delete().eq('id',id);if(error)throw error;return true;},
+};
+async function gs(fn){const args=[].slice.call(arguments,1);if(!API[fn])throw new Error('알 수 없는 요청: '+fn);let last=null;
+  for(let attempt=0;attempt<3;attempt++){try{return await API[fn](...args);}catch(e){last=e;const m=String(e&&e.message||e);const transient=/Failed to fetch|Load failed|NetworkError|timeout|503|502|paused/i.test(m);if(!transient)break;await sleep(1200*(attempt+1));}}
+  throw last;}
+// ---- 상태 반영
 function applySettings(raw){const base=JSON.parse(JSON.stringify(DEFAULT_SETTINGS));Object.keys(raw||{}).forEach(k=>{base[k]=raw[k];});S.settings=normalize(base);S.settings.accounts=(S.assetsRaw&&S.assetsRaw.accounts||[]).map(a=>({id:a.id,group:a.group,name:a.name}));}
 function applyAssets(data){S.assetsRaw=data||{months:[],accounts:[]};const map={};(S.assetsRaw.accounts||[]).forEach(a=>{Object.keys(a.bal||{}).forEach(m=>{(map[m]=map[m]||{bal:{}}).bal[a.id]=a.bal[m];});});S.assets=map;if(S.settings)S.settings.accounts=S.assetsRaw.accounts.map(a=>({id:a.id,group:a.group,name:a.name}));}
 function applyTx(year,list){Object.keys(S.ledgers).forEach(k=>{if(k.startsWith(year+'-'))delete S.ledgers[k];});(list||[]).forEach(t=>{const m=ym(t.d);(S.ledgers[m]=S.ledgers[m]||{tx:{}}).tx[t.id]=t;});S.loadedYears[year]=true;S.yearCache=null;}
-async function refresh(year,quiet){year=year||S.month.slice(0,4);if(S.syncing)return;S.syncing=true;setSync(true);
-  try{const data=await gs('getAll',year);applyAssets(data.assets);applySettings(data.settings);applyTx(year,data.tx);obReplay();ls.set('gb.cache.'+year,{t:Date.now(),data});note('');showSetup(false);renderAll();}
-  catch(e){const msg=String(e&&e.message||e);const slow=e&&e.name==='AbortError'||/Load failed|NetworkError|Failed to fetch|HTTP 5/.test(msg);if(msg!=='no-gs')note(slow?'구글 시트 응답이 느려요. 화면은 마지막 저장본이고, 잠시 후 자동으로 다시 불러와요.':'불러오기 실패: '+msg+' — 연결 주소와 Apps Script 배포(모든 사용자)를 확인해 주세요.');showSetup(!apiUrl()||msg==='no-gs');if(slow)setTimeout(()=>refresh(year,true),12000);}
+async function refresh(year,quiet){year=year||S.month.slice(0,4);if(S.syncing)return;if(!S.session)return;S.syncing=true;setSync(true);
+  try{const data=await gs('getAll',year);applyAssets(data.assets);applySettings(data.settings);applyTx(year,data.tx);obReplay();ls.set('gb.cache.'+year,{t:Date.now(),data});note('');renderAll();}
+  catch(e){if(!quiet)note('불러오기 실패: '+sbErr(e));}
   S.syncing=false;setSync(false);}
 function setSync(on,msg){const t=$('#today');if(!t)return;if(!t.dataset.orig)t.dataset.orig=t.textContent;t.textContent=on?(msg||'동기화 중…'):t.dataset.orig;t.style.opacity=on?.6:1;}
-// ---------- 전송 대기열(outbox): 즉시 반영 + 뒤에서 전송, 실패 시 자동 재시도
-const OB={list:ls.get('gb.outbox',[]),busy:false};
-function obSave(){ls.set('gb.outbox',OB.list);obBadge();}
-function obBadge(){let el=$('#obbadge');if(!el){el=document.createElement('div');el.id='obbadge';el.className='notice';el.style.cssText='margin-top:8px;display:flex;justify-content:space-between;align-items:center';$('#notice').after(el);}const n=OB.list.length;el.hidden=!n;if(n)el.innerHTML=`<span>전송 대기 ${n}건 — 연결되면 자동으로 저장돼요</span><button class="ghost" id="obretry" style="padding:4px 10px;font-size:12px">지금 전송</button>`;const b=$('#obretry');if(b)b.onclick=()=>obFlush(true);}
-function obPush(fn,args){OB.list.push({fn,args,ts:Date.now()});obSave();obFlush();}
-async function obFlush(manual){if(OB.busy||!OB.list.length)return;if(!apiUrl()){if(manual)toast('연결 주소가 없어요');return;}OB.busy=true;
-  while(OB.list.length){const op=OB.list[0];try{await gs(op.fn,...op.args);OB.list.shift();obSave();}catch(e){if(manual)toast('아직 전송이 안 돼요: '+(e&&e.message||e));break;}}
-  OB.busy=false;obBadge();if(!OB.list.length)refresh(null,true);}
-function obReplay(){OB.list.forEach(op=>{try{
-  if(op.fn==='addTx'||op.fn==='updateTx'){const t=op.args[0];(S.ledgers[ym(t.d)]=S.ledgers[ym(t.d)]||{tx:{}}).tx[t.id]=t;}
-  else if(op.fn==='deleteTx'){Object.values(S.ledgers).forEach(l=>{if(l.tx)delete l.tx[op.args[0]];});}
-  else if(op.fn==='saveAssets'){const [m,bal]=op.args;S.assets[m]={bal:Object.assign({},(S.assets[m]||{}).bal||{},bal)};}
-  else if(op.fn==='saveSettings'){Object.assign(S.settings,op.args[0]);}
-}catch(e){}});S.yearCache=null;}
-setInterval(()=>{if(document.visibilityState==='visible')obFlush();},20000);
-async function saveSettings(patch){Object.assign(S.settings,patch);renderAll();const p=Object.assign({},patch);delete p.accounts;obPush('saveSettings',[p]);}
 function txList(m){const d=S.ledgers[m];if(!d||!d.tx)return[];return Object.values(d.tx).filter(t=>t&&!t.del).sort((a,b)=>a.d<b.d?1:a.d>b.d?-1:(b.ts||0)-(a.ts||0));}
-function watchLedger(m){const y=m.slice(0,4);if(!S.loadedYears[y])refresh(y);}
+function watchLedger(m){const y=m.slice(0,4);if(!S.loadedYears[y])refresh(y,true);}
 async function addTx(obj){const t=Object.assign({},obj,{id:obj.id||uid()});(S.ledgers[ym(t.d)]=S.ledgers[ym(t.d)]||{tx:{}}).tx[t.id]=t;S.yearCache=null;renderHome();renderMonth();obPush('addTx',[t]);return t;}
 async function updateTx(obj,origM){const t=Object.assign({},obj,{edited:Date.now()});if(origM&&origM!==ym(t.d)&&S.ledgers[origM])delete S.ledgers[origM].tx[t.id];(S.ledgers[ym(t.d)]=S.ledgers[ym(t.d)]||{tx:{}}).tx[t.id]=t;S.yearCache=null;renderHome();renderMonth();obPush('updateTx',[t]);return t;}
 async function deleteTx(id,m){if(S.ledgers[m])delete S.ledgers[m].tx[id];S.yearCache=null;renderHome();renderMonth();obPush('deleteTx',[id]);}
 async function loadYear(y){if(!S.loadedYears[y]&&S.loadedYears[y]!==false){const data=await gs('getAll',y);applyTx(y,data.tx);}
   if(S.yearCache&&S.yearCache.y===y)return S.yearCache.rows;let rows=[];Object.keys(S.ledgers).filter(k=>k.startsWith(y+'-')).forEach(k=>{rows=rows.concat(txList(k));});S.yearCache={y,rows};return rows;}
 async function saveAssets(m,bal){S.assets[m]={bal:Object.assign({},(S.assets[m]||{}).bal||{},bal)};renderAssets();obPush('saveAssets',[m,bal]);}
-async function addAccount(group,name){const data=await gs('addAccount',group,name);applyAssets(data);renderAll();}
-async function deleteAccount(id){const data=await gs('deleteAccount',id);applyAssets(data);renderAll();}
-// polling: other person's changes show up within ~45 s
-setInterval(()=>{if(document.visibilityState==='visible'&&!$('#modal').classList.contains('on'))refresh(null,true);},45000);
-document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')refresh(null,true);});
+async function addAccount(group,name){const id='a'+uid();S.settings.accounts.push({id,group,name});(S.assetsRaw=S.assetsRaw||{months:[],accounts:[]}).accounts.push({id,group,name,bal:{}});renderAll();obPush('addAccount',[group,name,id]);}
+async function deleteAccount(id){S.settings.accounts=S.settings.accounts.filter(a=>a.id!==id);if(S.assetsRaw)S.assetsRaw.accounts=S.assetsRaw.accounts.filter(a=>a.id!==id);renderAll();obPush('deleteAccount',[id]);}
+async function saveSettings(patch){Object.assign(S.settings,patch);renderAll();const p=Object.assign({},patch);delete p.accounts;obPush('saveSettings',[p]);}
+// ---- 전송 대기열: 즉시 반영 + 뒤에서 전송 (오프라인이어도 안전)
+const OB={list:ls.get('gb.outbox',[]),busy:false};let obTimer=null;
+function obSave(){ls.set('gb.outbox',OB.list);obBadge();}
+function obBadge(state){let el=$('#obbadge');if(!el){el=document.createElement('div');el.id='obbadge';el.className='notice';el.style.cssText='margin-top:8px;display:flex;justify-content:space-between;align-items:center;gap:8px';$('#notice').after(el);}const n=OB.list.filter(o=>o.fn!=='learnAdd'&&o.fn!=='saveSettings').length||OB.list.length;el.hidden=!OB.list.length;if(OB.list.length)el.innerHTML=`<span>${state||`전송 대기 ${n}건 — 연결되면 자동 저장돼요`}</span><button class="ghost" id="obretry" style="padding:6px 12px;font-size:13px;background:var(--accent);color:var(--accent-ink);font-weight:600;white-space:nowrap">${state?'…':'지금 전송'}</button>`;const b=$('#obretry');if(b)b.onclick=()=>obFlush(true);}
+function obPush(fn,args){const last=OB.list[OB.list.length-1];if(last&&last.fn===fn&&(fn==='learnAdd'||fn==='saveSettings')){Object.assign(last.args[0],args[0]);}else OB.list.push({fn,args,ts:Date.now()});obSave();clearTimeout(obTimer);obTimer=setTimeout(()=>obFlush(),400);}
+async function obFlush(manual){if(OB.busy||!OB.list.length||!S.session)return;OB.busy=true;obBadge('전송 중…');
+  try{while(OB.list.length){const op=OB.list[0];await gs(op.fn,...op.args);OB.list.shift();obSave();}}
+  catch(e){if(manual)toast('전송 실패: '+sbErr(e));}
+  OB.busy=false;obBadge();if(!OB.list.length)refresh(null,true);}
+function obReplay(){OB.list.forEach(op=>{try{
+  if(op.fn==='addTx'||op.fn==='updateTx'){const t=op.args[0];(S.ledgers[ym(t.d)]=S.ledgers[ym(t.d)]||{tx:{}}).tx[t.id]=t;}
+  else if(op.fn==='deleteTx'){Object.values(S.ledgers).forEach(l=>{if(l.tx)delete l.tx[op.args[0]];});}
+  else if(op.fn==='saveAssets'){const [m,bal]=op.args;S.assets[m]={bal:Object.assign({},(S.assets[m]||{}).bal||{},bal)};}
+  else if(op.fn==='saveSettings'){Object.assign(S.settings,op.args[0]);}
+  else if(op.fn==='learnAdd'){S.settings.learn=Object.assign({},S.settings.learn||{},op.args[0]);}
+}catch(e){}});S.yearCache=null;}
+setInterval(()=>{if(document.visibilityState==='visible')obFlush();},15000);
+// ---- 실시간: 다른 폰의 변경을 바로 반영
+function sbRealtime(){const db=sbInit();if(!db||S.rt)return;try{S.rt=db.channel('gb').on('postgres_changes',{event:'*',schema:'public'},()=>{clearTimeout(S.rtT);S.rtT=setTimeout(()=>refresh(null,true),800);}).subscribe();}catch(e){}}
+setInterval(()=>{if(document.visibilityState==='visible')refresh(null,true);},60000);
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'){obFlush();refresh(null,true);}});
+// ---- 구글 시트에서 가져오기 (한 번)
+async function importFromSheet(){
+  const v=($('#imp-sheet').value||'').trim();const m=v.match(/\/d\/([A-Za-z0-9_-]{20,})/);const id=m?m[1]:v;
+  if(!/^[A-Za-z0-9_-]{20,}$/.test(id)){toast('시트 주소를 붙여넣어 주세요');return;}
+  if(!confirm('구글 시트의 거래내역·자산·설정을 이 앱 저장소로 복사해요. 같은 id의 내역은 덮어써요. 진행할까요?'))return;
+  const st=$('#imp-state');st.textContent='시트에서 읽는 중…';
+  try{
+    const d=await readSheetsDirect(id);const db=sbInit();
+    st.textContent=`거래 ${d.tx.length}건, 계좌 ${d.assets.accounts.length}개 — 저장 중…`;
+    for(let i=0;i<d.tx.length;i+=200){const {error}=await db.from('tx').upsert(d.tx.slice(i,i+200).map(txToRow));if(error)throw error;st.textContent=`거래 ${Math.min(i+200,d.tx.length)}/${d.tx.length} 저장…`;}
+    const accRows=d.assets.accounts.map((a,i)=>({id:a.id,grp:a.group,name:a.name,ord:i+1}));if(accRows.length){const {error}=await db.from('accounts').upsert(accRows);if(error)throw error;}
+    const balRows=[];d.assets.accounts.forEach(a=>Object.keys(a.bal).forEach(mo=>balRows.push({month:mo,account_id:a.id,value:a.bal[mo]})));if(balRows.length){const {error}=await db.from('assets_bal').upsert(balRows);if(error)throw error;}
+    const setRows=Object.keys(d.settings).filter(k=>k!=='accounts').map(k=>({key:k,value:d.settings[k]}));if(setRows.length){const {error}=await db.from('settings').upsert(setRows);if(error)throw error;}
+    st.textContent=`완료: 거래 ${d.tx.length}건, 계좌 ${accRows.length}개, 잔액 ${balRows.length}칸`;toast('가져왔어요');S.loadedYears={};await refresh(null,false);
+  }catch(e){st.textContent='실패: '+sbErr(e);}
+}
 function note(msg){const n=$('#notice');n.textContent=msg;n.hidden=!msg;}
 
 // ---------- shared bits
@@ -655,7 +712,7 @@ function parseSms(text){
   if(/입금|deposit|salary|received|refund|환급|credited/i.test(t)&&!/출금|purchase|paid/i.test(t))out.type='수입';
   return out;
 }
-function learnMemo(memo,c,s){if(!memo||!c)return;const k=memo.toLowerCase().replace(/[^a-z0-9가-힣 ]/g,'').trim().slice(0,30);if(k.length<2)return;S.settings.learn=S.settings.learn||{};if(S.settings.learn[k]&&S.settings.learn[k].c===c&&S.settings.learn[k].s===s)return;S.settings.learn[k]={c,s};const keys=Object.keys(S.settings.learn);if(keys.length>300)delete S.settings.learn[keys[0]];saveSettings({learn:S.settings.learn}).catch(()=>{});}
+function learnMemo(memo,c,s){if(!memo||!c)return;const k=memo.toLowerCase().replace(/[^a-z0-9가-힣 ]/g,'').trim().slice(0,30);if(k.length<2)return;S.settings.learn=S.settings.learn||{};if(S.settings.learn[k]&&S.settings.learn[k].c===c&&S.settings.learn[k].s===s)return;S.settings.learn[k]={c,s};obPush('learnAdd',[{[k]:{c,s}}]);}
 
 // ---------- ENTRY SHEET
 $('#fab').onclick=()=>openEntry(null);
@@ -838,7 +895,7 @@ $$('#settype button').forEach(b=>b.onclick=()=>{S.setType=b.dataset.t;$$('#setty
 function renderSettings(){
   if(!$('#v-settings').classList.contains('on'))return;
   const s=S.settings;
-  $('#goal').value=fmt(s.goal||0);$('#baseline').value=fmt(s.baseline||0);$('#api-url').value=apiUrl();$('#api-url').disabled=!!(window.GB_API&&String(window.GB_API).startsWith('http'));$('#sheet-id').value=sheetId();$('#sheet-id').disabled=!!(window.GB_SHEET_ID&&String(window.GB_SHEET_ID).length>20);$('#sheet-state').textContent=sheetId()?'빠른 읽기 켜짐 (시트에서 직접 불러옴)':'꺼짐 — Apps Script를 통해 불러옴 (느림)';
+  $('#goal').value=fmt(s.goal||0);$('#baseline').value=fmt(s.baseline||0);$('#acct-email').textContent=S.user_email||'';if(!$('#imp-sheet').value)$('#imp-sheet').value=sheetId();
   // pays
   const pl=$('#paylist');pl.innerHTML='';
   s.pays.forEach((p,i)=>{const d=document.createElement('div');d.className='sitem';d.innerHTML=`<span>${esc(p.name)}${p.owner?`<span class="tag">${esc(p.owner)}</span>`:''}<span class="tag">${esc(p.cur||'KRW')}</span></span><span class="subs"></span><button class="danger" aria-label="삭제">✕</button>`;d.querySelector('button').onclick=async()=>{if(!confirm(`'${p.name}' 결제수단을 지울까요? 기존 내역은 그대로 남아요.`))return;s.pays.splice(i,1);await saveSettings({pays:s.pays});};pl.appendChild(d);});
@@ -871,15 +928,18 @@ $('#exportcsv').onclick=async()=>{const y=S.month.slice(0,4);const rows=await lo
 // ---------- fold (설정 접기/펼치기)
 $$('.fold').forEach(b=>{const k=b.dataset.fold;const open=ls.get('gb.fold.'+k,false);const body=$('#fold-'+k);body.hidden=!open;b.textContent=open?'접기':'펼치기';b.classList.toggle('on',open);
   b.onclick=()=>{const o=body.hidden;body.hidden=!o;b.textContent=o?'접기':'펼치기';b.classList.toggle('on',o);ls.set('gb.fold.'+k,o);};});
-// ---------- 구글 시트 연결 설정
-(function(){const q=new URLSearchParams(location.search);const api=q.get('api');const sh=q.get('sheet');let ch=false;if(api&&api.startsWith('http')){ls.set('gb.api',api);q.delete('api');ch=true;}if(sh&&/^[A-Za-z0-9_-]{20,}$/.test(sh)){ls.set('gb.sheet',sh);q.delete('sheet');ch=true;}if(ch)history.replaceState(null,'',location.pathname+(q.toString()?'?'+q:'')+location.hash);})();
-function showSetup(on){const el=$('#setup');if(!el)return;el.hidden=!on;if(on){$('#setup-url').value=ls.get('gb.api','');}}
-async function connectApi(inputSel){const url=($(inputSel).value||'').trim();if(!/^https:\/\/script\.google\.com\/macros\/s\/.+\/exec$/.test(url)){toast('Apps Script 웹 앱 URL(…/exec)을 붙여넣어 주세요');return;}ls.set('gb.api',url);toast('연결 확인 중…');await refresh(null,false);if(!$('#notice').textContent){toast('연결됐어요');}}
-$('#setup-go').onclick=()=>connectApi('#setup-url');
-$('#api-save').onclick=()=>connectApi('#api-url');
-$('#sheet-save').onclick=async()=>{const v=($('#sheet-id').value||'').trim();const m=v.match(/\/d\/([A-Za-z0-9_-]{20,})/);const id=m?m[1]:v;if(!/^[A-Za-z0-9_-]{20,}$/.test(id)){toast('시트 주소 또는 ID를 붙여넣어 주세요');return;}ls.set('gb.sheet',id);$('#sheet-id').value=id;toast('확인 중…');await refresh(null,false);if(!$('#notice').textContent)toast('빠른 읽기가 켜졌어요');};
-$('#api-share').onclick=async()=>{const u=location.origin+location.pathname+'?api='+encodeURIComponent(apiUrl())+(sheetId()?'&sheet='+sheetId():'');try{await navigator.clipboard.writeText(u);toast('남편에게 보낼 링크를 복사했어요');}catch(e){prompt('이 링크를 남편에게 보내세요',u);}};
-
+// ---------- 로그인
+function showLogin(on,msg){const el=$('#login');el.hidden=!on;$('#login-msg').textContent=msg||'';document.body.classList.toggle('login-open',on);if(on)setTimeout(()=>$('#login-email').focus(),50);}
+async function doLogin(){const db=sbInit();if(!db){showLogin(true,'config.js에 Supabase 주소/키가 없어요');return;}
+  const email=($('#login-email').value||'').trim(),pw=$('#login-pw').value||'';if(!email||!pw){$('#login-msg').textContent='이메일과 비밀번호를 입력해 주세요';return;}
+  const btn=$('#login-go');btn.disabled=true;$('#login-msg').textContent='확인 중…';
+  const {data,error}=await db.auth.signInWithPassword({email,password:pw});btn.disabled=false;
+  if(error){$('#login-msg').textContent=/Invalid login/i.test(error.message)?'이메일 또는 비밀번호가 맞지 않아요':sbErr(error);return;}
+  onSession(data.session);}
+function onSession(session){S.session=session;S.user_email=session&&session.user?session.user.email:'';if(!session){showLogin(true);return;}showLogin(false);$('#login-pw').value='';sbRealtime();obFlush();refresh(null,false);}
+$('#login-go').onclick=doLogin;$('#login-pw').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin();});
+$('#logout').onclick=async()=>{if(!confirm('로그아웃할까요? 다음에 열 때 다시 로그인해야 해요.'))return;const db=sbInit();if(db)await db.auth.signOut();S.session=null;S.ledgers={};S.loadedYears={};try{Object.keys(localStorage).filter(k=>k.startsWith('gb.cache.')).forEach(k=>localStorage.removeItem(k));}catch(e){}showLogin(true);};
+$('#imp-go').onclick=importFromSheet;
 // ---------- 분석 리포트
 const RP={mode:'month'};
 function rpMonths(y){const out=[];for(let m=1;m<=12;m++){const k=y+'-'+pad(m);const rows=viewRows(txList(k));out.push({k,m,rows,s:sums(rows),has:rows.length>0});}return out;}
@@ -1009,11 +1069,12 @@ if('serviceWorker' in navigator){window.addEventListener('load',()=>{navigator.s
 function applyCache(year){const c=ls.get('gb.cache.'+year,null);if(!c||!c.data)return false;try{applyAssets(c.data.assets);applySettings(c.data.settings);applyTx(year,c.data.tx);obReplay();S.loadedYears[year]=false;return true;}catch(e){return false;}}
 (async function boot(){
   S.settings=JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
-  const y=S.month.slice(0,4);const cached=applyCache(y);
-  renderAll();
-  if(!cached)setSync(true,'불러오는 중…');
-  await refresh(y,cached);
-  obBadge();obFlush();
+  const y=S.month.slice(0,4);const cached=applyCache(y);renderAll();obBadge();
+  const db=sbInit();
+  if(!db){note('config.js에 Supabase 주소(SB_URL)와 키(SB_KEY)를 넣어 주세요.');showLogin(true,'설정이 아직 없어요');return;}
+  const {data}=await db.auth.getSession();
+  db.auth.onAuthStateChange((ev,session)=>{if(ev==='SIGNED_OUT'){S.session=null;showLogin(true);}else if(session){S.session=session;S.user_email=session.user.email;}});
+  if(data&&data.session){onSession(data.session);}else showLogin(true);
 })();
 })();
 </script>
